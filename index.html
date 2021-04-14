@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Hello Analytics Reporting API V4</title>
+  <meta name="google-signin-client_id"
+    content="45786547988-nlgvqeh1itdbmo0bmboe6js0ceag7dnq.apps.googleusercontent.com" />
+  <meta name="google-signin-client_secret" content="UKRciOn9m0CTimsKZn71l5LL" />
+  <meta name="google-signin-scope" content="https://www.googleapis.com/auth/analytics.readonly" />
+</head>
+
+<body>
+  <h1>Tutorcircle Custom Google Analytics (by Categories)</h1>
+  <div id="loadingdiv"></div>
+  <!-- The Sign-in button. This will run `queryReports()` on success. -->
+  <!-- <p class="g-signin2" data-onsuccess="queryReports"></p> -->
+  <p class="g-signin2"></p>
+  <!-- The API response will be printed here. -->
+  <textarea hidden cols="80" rows="20" id="query-output"></textarea>
+  <h4>Start Date:</h2>
+    <input id="startDateInput" placeholder="YYYY-MM-DD" />
+    <h4>End Date:</h2>
+      <input id="endDateInput" placeholder="YYYY-MM-DD" /><br><br>
+      <button onclick="generate()">generate</button>
+      <br><br>
+      <table id="outputtable"></table>
+      <script>
+        // Replace with your view ID.
+        var VIEW_ID = "98190825";
+
+        // Query the API and print the results to the page.
+        function queryReports(startDate, endDate) {
+          document.getElementById('loadingdiv').innerHTML = "Loading..."
+          gapi.client
+            .request({
+              path: "/v4/reports:batchGet",
+              root: "https://analyticsreporting.googleapis.com/",
+              method: "POST",
+              body: {
+                reportRequests: [
+                  {
+                    viewId: VIEW_ID,
+                    pageSize: 100000,
+                    // pageToken:'10',
+                    dateRanges: [
+                      {
+                        // YYYY-MM-DD
+                        startDate: startDate,//"7daysAgo",
+                        endDate: endDate//"today",
+                      },
+                    ],
+                    metrics: [
+                      { expression: "ga:pageviews" },
+                      // { expression: "ga:sessions" },
+                    ],
+                    dimensions: [
+                      { name: "ga:PagePath" },
+                      { name: "ga:pagePathLevel1" },
+                      { name: "ga:pagePathLevel2" },
+                      { name: "ga:pageTitle" },
+                      // { name: "ga:operatingSystem" },
+                      // { name: "ga:city" },
+                      // { name: "ga:previousPagePath" },
+                    ],
+                  },
+                ],
+              },
+            })
+            .then(displayResults, console.error.bind(console));
+        }
+
+        function queryNextReports(startDate, endDate, pageToken) {
+          // document.getElementById('loadingdiv').innerHTML = "Loading..."
+          gapi.client
+            .request({
+              path: "/v4/reports:batchGet",
+              root: "https://analyticsreporting.googleapis.com/",
+              method: "POST",
+              body: {
+                reportRequests: [
+                  {
+                    viewId: VIEW_ID,
+                    pageSize: 100000,
+                    pageToken: '' + pageToken,
+                    dateRanges: [
+                      {
+                        // YYYY-MM-DD
+                        startDate: startDate,//"7daysAgo",
+                        endDate: endDate//"today",
+                      },
+                    ],
+                    metrics: [
+                      { expression: "ga:pageviews" },
+                      // { expression: "ga:sessions" },
+                    ],
+                    dimensions: [
+                      { name: "ga:PagePath" },
+                      { name: "ga:pagePathLevel1" },
+                      { name: "ga:pagePathLevel2" },
+                      { name: "ga:pageTitle" },
+                      // { name: "ga:operatingSystem" },
+                      // { name: "ga:city" },
+                      // { name: "ga:previousPagePath" },
+                    ],
+                  },
+                ],
+              },
+            })
+            .then(displayResults, console.error.bind(console));
+        }
+
+        var myreport;
+        function displayResults(response) {
+          console.log(response);
+          if (!myreport)
+            myreport = response.result.reports[0].data.rows;
+          else
+            myreport = [...myreport, ...response.result.reports[0].data.rows];
+          var formattedJson = JSON.stringify(
+            response.result.reports[0].data.rows,
+            null,
+            2
+          );
+          document.getElementById("query-output").value = formattedJson;
+          if (response.result.reports[0].nextPageToken) {
+            console.log(response.result.reports[0].nextPageToken)
+            queryNextReports(startDateInput, endDateInput, response.result.reports[0].nextPageToken)
+            return
+          }
+          loadDoc();
+        }
+
+        var mycatcsv;
+        function loadDoc() {
+          var xhttp = new XMLHttpRequest();
+          xhttp.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {
+              // console.log(this.responseText);
+              var temprow = this.responseText.split("\n");
+              temprow = temprow.map((x) => {
+                return x.split(",");
+              });
+              mycatcsv = temprow;
+              combineinformation();
+            }
+          };
+          xhttp.open("GET", "allpostcategory.csv", true);
+          xhttp.send();
+        }
+
+        function combineinformation() {
+          // console.log(myreport);
+          // console.log(mycatcsv);
+          var catjson = {};
+          var idtocat = {};
+          var catcount = {};
+
+          for (var j = 1; j < mycatcsv.length; j++) {
+            if (mycatcsv[j][1]) {
+              var tempallcat = mycatcsv[j][1].split('"').join("").split("|");
+              idtocat[mycatcsv[j][0]] = tempallcat;
+              for (var k = 0; k < tempallcat.length; k++) {
+                if (!catjson[tempallcat[k]]) catjson[tempallcat[k]] = [];
+                if (!catcount[tempallcat[k]]) catcount[tempallcat[k]] = 0;
+                catjson[tempallcat[k]].push(mycatcsv[j][0]);
+              }
+            }
+          }
+          // console.log(idtocat);
+          // console.log(catjson);
+          for (var j = 0; j < myreport.length; j++) {
+            const postid = myreport[j].dimensions[2].split("/").join("");
+            if (postid in idtocat) {
+              for (var k = 0; k < idtocat[postid].length; k++) {
+                catcount[idtocat[postid][k]] += parseInt(
+                  myreport[j].metrics[0].values[0]
+                );
+              }
+            }
+          }
+          // console.log(catcount);
+          generateTableHead(document.getElementById("outputtable"), catcount);
+        }
+
+        function generateTableHead(table, data) {
+          table.style.width = "100%";
+          table.setAttribute("border", "1");
+          const headerrow = "<tr><th>Category</th><th>Views</th></tr>";
+          var tablebodyhtml = "";
+          for (let j in data) {
+            tablebodyhtml +=
+              "<tr><td>" + j + "</td><td>" + data[j] + "</td></tr>";
+          }
+          table.innerHTML =
+            "<thead>" +
+            headerrow +
+            "</thead>" +
+            "<tbody>" +
+            tablebodyhtml +
+            "</tbody>";
+          document.getElementById('loadingdiv').innerHTML = ""
+        }
+
+        var startDateInput
+        var endDateInput
+        function generate() {
+          startDateInput = document.getElementById('startDateInput').value
+          endDateInput = document.getElementById('endDateInput').value
+          if (!startDateInput)
+            startDateInput = "7daysAgo"
+          if (!endDateInput)
+            endDateInput = "today"
+          myreport = undefined
+          queryReports(startDateInput, endDateInput)
+        }
+      </script>
+
+      <!-- Load the JavaScript API client and Sign-in library. -->
+      <script src="https://apis.google.com/js/client:platform.js"></script>
+</body>
+
+</html>
